@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPTV Player</title>
+  <!-- Include hls.js library from CDN for HLS stream playback -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    /* Reset and basic styling */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f7fa;
+      color: #333;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    /* Login screen styles */
+    #login-container {
+      background: #fff;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      width: 320px;
+      text-align: center;
+    }
+    #login-container h2 {
+      margin-bottom: 1rem;
+    }
+    #login-form input {
+      width: 100%;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    #login-form button {
+      width: 100%;
+      padding: 0.75rem;
+      background: #007bff;
+      border: none;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    #login-form button:hover {
+      background: #0056b3;
+    }
+    /* Main container styles */
+    #main-container {
+      display: none;
+      width: 90%;
+      max-width: 1200px;
+      height: 90vh;
+      margin: 1rem auto;
+      background: #fff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+    }
+    /* Sidebar for channel list and search */
+    #sidebar {
+      width: 300px;
+      border-right: 1px solid #ddd;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+    }
+    #search-input {
+      padding: 0.5rem;
+      margin-bottom: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    #channel-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+    #channel-list div {
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+      background: #f9f9f9;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #channel-list div:hover {
+      background: #e9ecef;
+    }
+    /* Video player container */
+    #player-container {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #000;
+    }
+    #video {
+      width: 90%;
+      max-width: 800px;
+      height: auto;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="login-container">
+    <h2>IPTV Login</h2>
+    <form id="login-form">
+      <input type="text" id="username" placeholder="Username" required />
+      <input type="password" id="password" placeholder="Password" required />
+      <input type="url" id="baseUrl" placeholder="Base URL" required />
+      <button type="submit">Login</button>
+    </form>
+  </div>
+
+  <!-- Main IPTV Interface -->
+  <div id="main-container">
+    <!-- Sidebar: Channel search and list -->
+    <div id="sidebar">
+      <input type="text" id="search-input" placeholder="Search channels..." />
+      <div id="channel-list"></div>
+    </div>
+    <!-- Video Player -->
+    <div id="player-container">
+      <video id="video" controls></video>
+    </div>
+  </div>
+
+  <script>
+    // Global variables for credentials and channels
+    let username, password, baseUrl;
+    let allChannels = [];
+
+    // Login form event listener
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      // Retrieve values from form inputs and trim them
+      username = document.getElementById('username').value.trim();
+      password = document.getElementById('password').value.trim();
+      baseUrl = document.getElementById('baseUrl').value.trim();
+      
+      // Remove trailing slash if present
+      if(baseUrl.slice(-1) === '/') {
+        baseUrl = baseUrl.slice(0, -1);
+      }
+      
+      // Hide login screen and show main interface
+      document.getElementById('login-container').style.display = 'none';
+      document.getElementById('main-container').style.display = 'flex';
+      
+      // Fetch the channels using the provided credentials
+      fetchChannels();
+    });
+
+    // Function to fetch the list of live streams
+    function fetchChannels() {
+      const apiUrl = `${baseUrl}/player_api.php?username=${username}&password=${password}&action=get_live_streams`;
+      console.log("Fetching channels from:", apiUrl);
+      fetch(apiUrl, { mode: 'cors' })
+        .then(response => {
+          console.log('Response status:', response.status);
+          if (!response.ok) throw new Error(`Failed to fetch channels. Status: ${response.status}`);
+          return response.json();
+        })
+        .then(data => {
+          allChannels = data; // store all channels globally for filtering
+          displayChannels(allChannels);
+        })
+        .catch(error => {
+          console.error('Error fetching channels:', error);
+        });
+    }
+
+    // Function to display channels in the UI
+    function displayChannels(channels) {
+      const channelList = document.getElementById('channel-list');
+      channelList.innerHTML = ''; // Clear any existing list
+      if (channels.length === 0) {
+        channelList.innerHTML = '<p>No channels found.</p>';
+        return;
+      }
+      channels.forEach(channel => {
+        const div = document.createElement('div');
+        div.textContent = channel.name;
+        div.addEventListener('click', () => playStream(channel));
+        channelList.appendChild(div);
+      });
+    }
+
+    // Search functionality for filtering channels
+    document.getElementById('search-input').addEventListener('input', function(e) {
+      const searchTerm = e.target.value.toLowerCase();
+      const filteredChannels = allChannels.filter(channel =>
+        channel.name.toLowerCase().includes(searchTerm)
+      );
+      displayChannels(filteredChannels);
+    });
+
+    // Function to play the selected stream
+    function playStream(channel) {
+      // Construct the stream URL (using .m3u8 for HLS playlists)
+      const streamUrl = `${baseUrl}/live/${username}/${password}/${channel.stream_id}.m3u8`;
+      const video = document.getElementById('video');
+
+      if (Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(streamUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.play();
+        });
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          console.error('HLS Error:', data);
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = streamUrl;
+        video.addEventListener('loadedmetadata', () => {
+          video.play();
+        });
+      } else {
+      }
+    }
+  </script>
+</body>
+</html>
